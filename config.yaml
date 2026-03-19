@@ -1,0 +1,132 @@
+# =============================================================================
+# ai-panel-data — configuration
+# =============================================================================
+# Edit this file to control which years, countries, and indicators are fetched.
+# All sections can be toggled with enabled: true/false.
+
+pipeline:
+  start_year: 2010          # First year to include in the panel
+  end_year: 2024            # Last year to include (data may be incomplete for latest)
+  output_dir: data/processed
+  output_formats:           # Options: csv, parquet, excel
+    - csv
+    - parquet
+
+# ─── Country filtering ────────────────────────────────────────────────────────
+# Leave filter as [] to include ALL countries that appear across sources.
+# Or supply a list of ISO-3166 alpha-3 codes to restrict the panel.
+countries:
+  filter: []
+  # filter: [USA, GBR, DEU, FRA, JPN, KOR, CHN, IND, BRA, CAN, AUS, SWE, NLD]
+
+# ─── OECD (via stats.oecd.org SDMX-JSON API) ─────────────────────────────────
+oecd:
+  enabled: true
+  # MSTI — Main Science and Technology Indicators
+  msti:
+    enabled: true
+    dataset_id: MSTI_PUB
+    indicators:             # Leave [] to fetch all indicators in the dataset
+      - GERD_GDPB           # Total R&D expenditure as % of GDP
+      - BERD_GDPB           # Business R&D as % of GDP
+      - GOVERD_GDPB         # Government R&D as % of GDP
+      - HERD_GDPB           # Higher-education R&D as % of GDP
+      - RESS_EMPB            # Researchers per 1,000 employed
+      - GERD_PERPOP         # R&D expenditure per capita (USD PPP)
+
+  # ICT access and usage (households / individuals)
+  ict:
+    enabled: true
+    dataset_id: ICT_HH2
+    indicators: []          # Fetch all (broadband, internet, mobile, etc.)
+
+  # Business enterprise R&D by industry (NACE Rev.2)
+  berd:
+    enabled: true
+    dataset_id: BERD_NACE2
+    indicators: []
+
+  # Patents by IPC technology class
+  patents:
+    enabled: true
+    dataset_id: PATS_IPC
+    # IPC classes most relevant to AI / digital technology:
+    #   G06N – computing models (neural networks, ML, probabilistic reasoning)
+    #   G06F – general digital data processing
+    #   G06K – data recognition / presentation
+    #   G06T – image data processing (computer vision)
+    #   G06V – image / video recognition
+    #   G10L – speech / audio processing (voice AI)
+    ipc_classes:
+      - G06N
+      - G06F
+      - G06K
+      - G06T
+      - G06V
+      - G10L
+
+# ─── World Bank WDI ───────────────────────────────────────────────────────────
+worldbank:
+  enabled: true
+  indicators:
+    # Macroeconomic
+    NY.GDP.PCAP.KD:    gdp_per_capita_const2015usd
+    NY.GDP.MKTP.KD.ZG: gdp_growth_annual_pct
+    NY.GDP.MKTP.CD:    gdp_current_usd
+    NE.TRD.GNFS.ZS:    trade_pct_gdp
+    NE.GDI.FTOT.ZS:    gross_capital_formation_pct_gdp
+    FP.CPI.TOTL.ZG:    inflation_cpi_pct
+    SL.UEM.TOTL.ZS:    unemployment_pct
+    SP.POP.TOTL:       population_total
+    # Technology & digital
+    IT.NET.USER.ZS:    internet_users_pct_pop
+    IT.CEL.SETS.P2:    mobile_subscriptions_per100
+    IT.NET.BBND.P2:    fixed_broadband_per100
+    GB.XPD.RSDV.GD.ZS: rd_expenditure_pct_gdp
+    # Education
+    SE.TER.ENRR:       tertiary_enrollment_gross_pct
+    SE.XPD.TOTL.GD.ZS: education_expenditure_pct_gdp
+    # Governance (World Governance Indicators)
+    CC.EST:  wgi_control_of_corruption
+    GE.EST:  wgi_government_effectiveness
+    RQ.EST:  wgi_regulatory_quality
+    RL.EST:  wgi_rule_of_law
+    VA.EST:  wgi_voice_and_accountability
+    PV.EST:  wgi_political_stability
+    # Business environment
+    IC.BUS.EASE.XQ: ease_of_doing_business_rank
+
+# ─── IMF World Economic Outlook ───────────────────────────────────────────────
+imf:
+  enabled: true
+  indicators:
+    NGDPD:       imf_gdp_current_usd_bn
+    NGDPDPC:     imf_gdp_per_capita_current_usd
+    NGDP_RPCH:   imf_gdp_real_growth_pct
+    PCPIPCH:     imf_inflation_avg_pct
+    LUR:         imf_unemployment_pct
+    BCA_NGDPD:   imf_current_account_pct_gdp
+    GGXCNL_NGDP: imf_net_lending_pct_gdp
+    GGXWDG_NGDP: imf_gross_debt_pct_gdp
+    GGR_NGDP:    imf_gov_revenue_pct_gdp
+    GGX_NGDP:    imf_gov_expenditure_pct_gdp
+
+# ─── V-Dem (Varieties of Democracy) ──────────────────────────────────────────
+vdem:
+  enabled: true
+  # If you have already downloaded the V-Dem CSV manually, set the path here.
+  # Otherwise, the script will attempt to download the latest version.
+  local_file: null          # e.g. "data/raw/V-Dem-CY-Full-v15.csv"
+  indicators:
+    v2x_libdem:           vdem_liberal_democracy
+    v2x_polyarchy:        vdem_electoral_democracy
+    v2x_civlib:           vdem_civil_liberties
+    v2x_rule:             vdem_rule_of_law
+    v2x_corr:             vdem_political_corruption
+    v2xel_frefair:        vdem_clean_elections
+    v2x_freexp_altinf:    vdem_freedom_expression
+    v2x_accountability:   vdem_accountability
+    v2x_partipdem:        vdem_participatory_democracy
+    v2x_egaldem:          vdem_egalitarian_democracy
+    v2psnatpar:           vdem_party_nationalization
+    v2xnp_pres:           vdem_presidentialism

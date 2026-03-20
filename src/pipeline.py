@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 import pandas as pd
+import pycountry
 
 from .harmonize import apply_country_filter, standardise_iso3
 from .imf import fetch_all_imf
@@ -30,6 +31,29 @@ from .vdem import fetch_all_vdem
 from .worldbank import fetch_all_worldbank
 
 logger = get_logger(__name__)
+
+
+# ── Country validation ────────────────────────────────────────────────────────
+
+# Build a set of valid ISO 3166-1 alpha-3 codes once at import time
+_VALID_ISO3: set[str] = {c.alpha_3 for c in pycountry.countries}
+
+
+def _filter_to_countries(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove rows whose iso3 code is not a valid ISO 3166-1 alpha-3 country code.
+    This strips World Bank regional/income aggregates (WLD, MIC, SSA, etc.)
+    and any other non-country codes that slip through source-level filtering.
+    """
+    before = len(df["iso3"].unique())
+    mask = df["iso3"].isin(_VALID_ISO3)
+    dropped = sorted(df.loc[~mask, "iso3"].unique())
+    if dropped:
+        logger.info("Dropping %d non-country iso3 codes: %s", len(dropped), dropped)
+    df = df[mask].copy()
+    after = len(df["iso3"].unique())
+    logger.info("Country filter: %d → %d unique iso3 codes", before, after)
+    return df
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -223,6 +247,9 @@ def run_pipeline(config_path: str | Path = "config.yaml") -> pd.DataFrame:
 
     # ── Drop rows where both iso3 and year are missing ────────────────────────
     panel = panel.dropna(subset=["iso3", "year"])
+
+    # ── Remove non-country codes (WB aggregates etc.) ─────────────────────────
+    panel = _filter_to_countries(panel)
 
     # ── Derived variables ─────────────────────────────────────────────────────
     panel = add_derived_variables(panel)

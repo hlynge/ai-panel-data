@@ -21,6 +21,7 @@ wbgapi>=1.0.12          # Official World Bank Python client
 
 # ─── Country code harmonisation ───────────────────────────────────────────────
 country_converter>=1.2   # Converts between country name formats
+pycountry>=23.12         # ISO 3166-1 country code validation
 
 # ─── Jupyter (optional, for explore.ipynb) ────────────────────────────────────
 # Uncomment if you want to run the exploration notebook:

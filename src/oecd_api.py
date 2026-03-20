@@ -1,15 +1,13 @@
 """
-oecd_api.py — thin wrapper around the OECD SDMX-JSON / CSV API.
+oecd_api.py — thin wrapper around the OECD SDMX APIs.
 
-The OECD exposes two API generations:
-  • Old API  : https://stats.oecd.org/SDMX-JSON/data/  (stable, widely used)
-  • New API  : https://sdmx.oecd.org/public/rest/data/  (SDMX 2.1, 2024+)
+We use the *new* OECD SDMX 2.1 API (sdmx.oecd.org) as primary, because it
+supports proper startPeriod/endPeriod filtering which keeps response sizes
+manageable. The old API (stats.oecd.org) is kept as a fallback but returns
+the full dataset which can be very large and slow to parse.
 
-We primarily use the *old* API because dataset IDs are well-documented and
-stable. The new API is used for MSTI and other datasets that migrated there.
-
-Reference:
-  https://data.oecd.org/api/sdmx-json-documentation/
+New API reference:
+  https://www.oecd.org/en/data/insights/data-explainers/2024/09/api.html
 """
 
 from __future__ import annotations
@@ -26,12 +24,11 @@ logger = get_logger(__name__)
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-OLD_API_BASE = "https://stats.oecd.org/SDMX-JSON/data"
 NEW_API_BASE = "https://sdmx.oecd.org/public/rest/data"
+OLD_API_BASE = "https://stats.oecd.org/SDMX-JSON/data"
 
-# Pause between successive API calls to be a polite client (OECD rate-limits
-# at ~20 req/min on the new API; the old API is more permissive).
-_MIN_REQUEST_INTERVAL = 2.0   # seconds
+# Pause between successive API calls — OECD rate-limits at ~20 req/min
+_MIN_REQUEST_INTERVAL = 3.0   # seconds
 _last_call: float = 0.0
 
 
@@ -43,7 +40,65 @@ def _rate_limit() -> None:
     _last_call = time.time()
 
 
-# ── Old API ───────────────────────────────────────────────────────────────────
+# ── New API (primary) ─────────────────────────────────────────────────────────
+
+# Known dataflow IDs for the new OECD SDMX 2.1 API
+DATAFLOWS = {
+    "msti":    "OECD.STI.STP,DSD_MSTI@DF_MSTI,1.3",
+    "pats":    "OECD.STI.STP,DSD_PATS@DF_PATS_IPC,1.0",
+    "ict":     "OECD.STI.STP,DSD_ICT@DF_ICT_HH,1.0",
+    "berd":    "OECD.STI.STP,DSD_BERD@DF_BERD,1.0",
+}
+
+
+def fetch_dataset_new(
+    dataflow: str,
+    key: str = "all",
+    start_period: Optional[int] = None,
+    end_period: Optional[int] = None,
+    fmt: str = "csvfilewithlabels",
+    timeout: int = 300,
+) -> pd.DataFrame:
+    """
+    Download a dataset from the new OECD SDMX 2.1 API.
+
+    Parameters
+    ----------
+    dataflow     : Full dataflow reference, e.g.
+                   "OECD.STI.STP,DSD_MSTI@DF_MSTI,2.0"
+                   or a short alias from DATAFLOWS dict ("msti", "pats", etc.)
+    key          : Dimension filter key. Use "all" for all observations.
+    start_period : First year (YYYY).
+    end_period   : Last year (YYYY).
+    fmt          : "csvfilewithlabels" returns flat CSV with codes + labels.
+    timeout      : Request timeout in seconds.
+
+    Returns
+    -------
+    DataFrame as returned by the API.
+    """
+    # Allow short aliases
+    dataflow = DATAFLOWS.get(dataflow, dataflow)
+
+    url = f"{NEW_API_BASE}/{dataflow}/{key}"
+    params: dict = {"format": fmt}
+    if start_period:
+        params["startPeriod"] = start_period
+    if end_period:
+        params["endPeriod"] = end_period
+
+    logger.info("Fetching OECD [new API]: %s  key=%s  %s–%s",
+                dataflow.split(",")[1], key, start_period, end_period)
+    _rate_limit()
+    resp = fetch_url(url, params=params, timeout=timeout)
+
+    # The new API returns a CSV; parse it
+    df = pd.read_csv(io.StringIO(resp.text), low_memory=False)
+    logger.info("  → %d rows, %d cols", *df.shape)
+    return df
+
+
+# ── Old API (fallback) ────────────────────────────────────────────────────────
 
 def fetch_dataset_old(
     dataset_id: str,
@@ -51,24 +106,14 @@ def fetch_dataset_old(
     agency: str = "OECD",
     start_year: Optional[int] = None,
     end_year: Optional[int] = None,
+    timeout: int = 300,
 ) -> pd.DataFrame:
     """
-    Download a dataset from the *old* OECD SDMX-JSON API and return a
-    tidy pandas DataFrame.
+    Download a dataset from the old OECD SDMX-JSON API.
 
-    Parameters
-    ----------
-    dataset_id  : OECD dataset identifier, e.g. "MSTI_PUB", "PATS_IPC".
-    filter_expr : Dot-separated dimension filter.  Use "all" for everything.
-                  Example for patents in class G06N:
-                      "G06N.PCT_APPLICATIONS.../..."
-    agency      : Data-providing agency (default "OECD").
-    start_year  : First year to request (inclusive).
-    end_year    : Last year to request (inclusive).
-
-    Returns
-    -------
-    DataFrame with at least columns: COU (country), TIME (year), Value.
+    Note: this returns the *full* dataset without server-side filtering,
+    so it can be slow for large datasets. Prefer fetch_dataset_new() where
+    possible.
     """
     url = f"{OLD_API_BASE}/{dataset_id}/{filter_expr}/{agency}"
     params = {"format": "csv"}
@@ -79,66 +124,56 @@ def fetch_dataset_old(
 
     logger.info("Fetching OECD [old API]: %s / %s", dataset_id, filter_expr)
     _rate_limit()
-    resp = fetch_url(url, params=params)
-    df = pd.read_csv(io.StringIO(resp.text))
+    resp = fetch_url(url, params=params, timeout=timeout)
+    df = pd.read_csv(io.StringIO(resp.text), low_memory=False)
     logger.info("  → %d rows", len(df))
     return df
 
 
-# ── New API (SDMX 2.1) ────────────────────────────────────────────────────────
+# ── Normalise column names ────────────────────────────────────────────────────
 
-def fetch_dataset_new(
-    dataflow: str,
-    key: str = "all",
-    start_period: Optional[int] = None,
-    end_period: Optional[int] = None,
-    fmt: str = "csvfilewithlabels",
-) -> pd.DataFrame:
+def normalise_new_api(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Download a dataset from the *new* OECD SDMX 2.1 API.
+    Standardise column names from the new OECD CSV export.
 
-    Parameters
-    ----------
-    dataflow    : Full dataflow reference, e.g.
-                  "OECD.STI.STP,DSD_MSTI@DF_MSTI,2.0"
-    key         : Dimension key, e.g. "AUS+BEL.GERD_GDPB.PC_GDP"
-                  Use "all" for all observations.
-    start_period: First year (YYYY).
-    end_period  : Last year (YYYY).
-    fmt         : Response format.  "csvfilewithlabels" gives a flat CSV with
-                  both codes and human-readable labels.
-
-    Returns
-    -------
-    DataFrame as returned by the API.
+    The new API uses columns like:
+      REF_AREA        → country_code
+      TIME_PERIOD     → year
+      OBS_VALUE       → value
+      MEASURE / VAR   → kept as-is (varies by dataset)
     """
-    url = f"{NEW_API_BASE}/{dataflow}/{key}"
-    params: dict = {"format": fmt}
-    if start_period:
-        params["startPeriod"] = start_period
-    if end_period:
-        params["endPeriod"] = end_period
+    df = df.copy()
+    df.columns = [c.strip() for c in df.columns]
 
-    logger.info("Fetching OECD [new API]: %s", dataflow)
-    _rate_limit()
-    resp = fetch_url(url, params=params)
-    df = pd.read_csv(io.StringIO(resp.text))
-    logger.info("  → %d rows", len(df))
+    rename = {}
+    for c in df.columns:
+        cu = c.upper()
+        if cu in ("REF_AREA", "REFERENCE_AREA"):
+            rename[c] = "country_code"
+        elif cu == "TIME_PERIOD":
+            rename[c] = "year"
+        elif cu == "OBS_VALUE":
+            rename[c] = "value"
+        elif cu == "OBS_STATUS":
+            rename[c] = "flag"
+    df.rename(columns=rename, inplace=True)
+
+    if "year" in df.columns:
+        df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
+    if "value" in df.columns:
+        df["value"] = pd.to_numeric(df["value"], errors="coerce")
+
     return df
 
-
-# ── Convenience: normalise column names ───────────────────────────────────────
 
 def normalise_old_api(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Standardise column names from the old OECD CSV export to lowercase snake_case
-    and rename common dimension columns for consistency.
+    Standardise column names from the old OECD CSV export.
 
-    Common columns in old API output:
-      "COUNTRY" | "COU"    → country_code
-      "TIME"               → year
-      "Value"              → value
-      "Flag Codes"         → flag
+    Common columns:
+      COUNTRY | COU | LOCATION → country_code
+      TIME                     → year
+      Value                    → value
     """
     df = df.copy()
     df.columns = [c.strip() for c in df.columns]
@@ -156,11 +191,8 @@ def normalise_old_api(df: pd.DataFrame) -> pd.DataFrame:
             rename[c] = "flag"
     df.rename(columns=rename, inplace=True)
 
-    # year → integer where possible
     if "year" in df.columns:
         df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
-
-    # value → float
     if "value" in df.columns:
         df["value"] = pd.to_numeric(df["value"], errors="coerce")
 

@@ -1,59 +1,50 @@
 """
 oecd_ai.py — fetch AI-relevant indicators from OECD data sources.
 
-Data coverage
-─────────────
-The OECD.AI Observatory (oecd.ai/en/data) visualises data from multiple
-partner organisations.  Not all of it is available via a public API.  This
-module pulls what IS programmatically accessible:
+All datasets now use the new OECD SDMX 2.1 API (sdmx.oecd.org) which
+supports server-side year filtering, keeping responses fast and small.
 
-  1. R&D statistics (MSTI_PUB)
-       – Total / business / government / HE R&D as % of GDP
-       – Researchers per 1,000 employed
-  2. AI-related patents (PATS_IPC)
-       – Patent applications in IPC classes G06N (ML/AI), G06F, G06K,
-         G06T, G06V, G10L  (see config.yaml for the full list)
-  3. ICT access & usage (ICT_HH2)
-       – Internet users, broadband & mobile subscriptions, etc.
-  4. Business R&D by industry (BERD_NACE2)
-       – R&D spend in ICT-intensive sectors
-
-All four datasets are fetched via the *old* OECD SDMX-JSON API which is
-stable and well-documented.
-
-For data that cannot yet be pulled automatically (e.g. private AI investment
-from NetBase Quid/Stanford HAI, AI talent from LinkedIn, AI compute from
-Epoch AI), the function `download_stanfordhai_index()` attempts to retrieve
-the publicly released Stanford HAI AI Index spreadsheet, and clear error
-messages point you to manual download pages for the rest.
+Datasets covered
+────────────────
+  1. MSTI  — R&D expenditure & researcher counts (DSD_MSTI@DF_MSTI)
+  2. Patents — AI/ICT patent applications by IPC class (DSD_PATS@DF_PATS_REGION_ST)
+  3. ICT   — household internet/broadband access (DSD_ICT@DF_ICT_HH)
+  4. BERD  — business R&D by industry (DSD_BERD@DF_BERD)
 """
 
 from __future__ import annotations
 
-import io
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 import requests
 
-from .oecd_api import fetch_dataset_old, normalise_old_api
+from .oecd_api import fetch_dataset_new, normalise_new_api, DATAFLOWS
 from .utils import get_logger, save_raw
 
 logger = get_logger(__name__)
 
-# ── 1.  R&D indicators (MSTI_PUB) ────────────────────────────────────────────
 
-MSTI_INDICATORS = {
-    "GERD_GDPB":   "rd_total_pct_gdp",
-    "BERD_GDPB":   "rd_business_pct_gdp",
-    "GOVERD_GDPB": "rd_government_pct_gdp",
-    "HERD_GDPB":   "rd_highered_pct_gdp",
-    "RESS_EMPB":   "researchers_per1000_employed",
-    "GERD_PERPOP": "rd_per_capita_usd_ppp",
-    "GERD_USD":    "rd_total_usd_ppp_mn",
-    "BERD_USD":    "rd_business_usd_ppp_mn",
+# ── 1.  R&D indicators (MSTI) ─────────────────────────────────────────────────
+
+# MSTI measure codes in the new API.
+# Each entry is (MEASURE code, UNIT_MEASURE code) → friendly column name.
+# We filter on BOTH to get exactly the series we want.
+MSTI_MEASURES = {
+    ("G",    "PT_B1GQ"):    "rd_total_pct_gdp",
+    ("B",    "PT_B1GQ"):    "rd_business_pct_gdp",
+    ("GV",   "PT_B1GQ"):    "rd_government_pct_gdp",
+    ("H",    "PT_B1GQ"):    "rd_highered_pct_gdp",
+    ("T_RS", "10P3EMP"):    "researchers_per1000_employed",
+    ("G",    "USD_PPP_PS"): "rd_per_capita_usd_ppp",
+    ("P_ICTPCT", "PATN"):   "ict_patents_pct",
+    ("P_PCT",    "PATN"):   "total_pct_patents",
+    ("P_TRIAD",  "PATN"):   "triadic_patent_families",
 }
+
+# Kept for backward compatibility with config.yaml
+MSTI_INDICATORS = {k[0]: v for k, v in MSTI_MEASURES.items()}
 
 
 def fetch_msti(
@@ -63,50 +54,74 @@ def fetch_msti(
     raw_dir: str | Path = "data/raw",
 ) -> pd.DataFrame:
     """
-    Return MSTI indicators as a tidy country-year DataFrame.
-
-    Columns: iso2_code, year, indicator_name, value
-    (iso2 is converted to iso3 in the harmonise step of the pipeline)
+    Return MSTI R&D indicators as a wide country-year DataFrame.
     """
-    wanted = indicators or list(MSTI_INDICATORS.keys())
+    wanted = indicators or list(MSTI_MEASURES.keys())
     logger.info("Fetching MSTI R&D indicators: %s", wanted)
 
-    df_raw = fetch_dataset_old(
-        dataset_id="MSTI_PUB",
-        filter_expr="all",
-        start_year=start_year,
-        end_year=end_year,
-    )
+    try:
+        df_raw = fetch_dataset_new(
+            dataflow="msti",
+            key="all",
+            start_period=start_year,
+            end_period=end_year,
+        )
+    except Exception as exc:
+        logger.warning("MSTI new API failed (%s); falling back to old API…", exc)
+        try:
+            from .oecd_api import fetch_dataset_old, normalise_old_api
+            df_raw = fetch_dataset_old("MSTI_PUB", start_year=start_year, end_year=end_year)
+            df = normalise_old_api(df_raw)
+            save_raw(df, "oecd_msti_raw", raw_dir)
+            # Old API column for indicator is "VAR"
+            if "VAR" in df.columns:
+                df = df[df["VAR"].isin(wanted)].copy()
+                df["VAR"] = df["VAR"].map(lambda x: MSTI_MEASURES.get(x, x.lower()))
+                id_cols = [c for c in ("country_code", "year") if c in df.columns]
+                df = (
+                    df[id_cols + ["VAR", "value"]]
+                    .pivot_table(index=id_cols, columns="VAR", values="value", aggfunc="mean")
+                    .reset_index()
+                )
+                df.columns.name = None
+            logger.info("MSTI (old API fallback): %d rows", len(df))
+            return df
+        except Exception as exc2:
+            logger.error("MSTI old API fallback also failed: %s", exc2)
+            return pd.DataFrame()
+
     save_raw(df_raw, "oecd_msti_raw", raw_dir)
+    df = normalise_new_api(df_raw)
 
-    df = normalise_old_api(df_raw)
+    # The new API needs BOTH MEASURE and UNIT_MEASURE to identify each series.
+    # Build a lookup: (MEASURE, UNIT_MEASURE) → friendly name
+    lookup = MSTI_MEASURES  # dict of (measure, unit) → name
 
-    # Filter to requested indicators
-    if "VAR" in df.columns:
-        df = df[df["VAR"].isin(wanted)].copy()
-    elif "Indicator" in df.columns:
-        df = df[df["Indicator"].isin(wanted)].copy()
+    if "MEASURE" not in df.columns or "UNIT_MEASURE" not in df.columns:
+        logger.warning("Expected MEASURE/UNIT_MEASURE columns not found. Got: %s", df.columns.tolist())
+        return df
 
-    # Pivot to wide: one column per indicator per country-year
+    # Create a combined key column for matching
+    df["_key"] = list(zip(df["MEASURE"], df["UNIT_MEASURE"]))
+    df = df[df["_key"].isin(lookup.keys())].copy()
+    df["_indicator"] = df["_key"].map(lookup)
+
     id_cols = [c for c in ("country_code", "year") if c in df.columns]
-    ind_col = next((c for c in ("VAR", "Indicator", "MEASURE") if c in df.columns), None)
+    df = (
+        df[id_cols + ["_indicator", "value"]]
+        .pivot_table(index=id_cols, columns="_indicator", values="value", aggfunc="mean")
+        .reset_index()
+    )
+    df.columns.name = None
 
-    if ind_col:
-        df = df[id_cols + [ind_col, "value"]].copy()
-        df[ind_col] = df[ind_col].map(lambda x: MSTI_INDICATORS.get(x, x.lower()))
-        df = df.pivot_table(index=id_cols, columns=ind_col, values="value", aggfunc="mean").reset_index()
-        df.columns.name = None
-
-    logger.info("MSTI: %d country-year rows", len(df))
+    logger.info("MSTI: %d country-year rows, %d indicators", len(df), len(df.columns) - 2)
     return df
 
 
-# ── 2.  AI / ICT Patents (PATS_IPC) ──────────────────────────────────────────
+# ── 2.  AI / ICT Patents ──────────────────────────────────────────────────────
 
+# IPC classes most relevant to AI/ML
 IPC_AI_CLASSES = ["G06N", "G06F", "G06K", "G06T", "G06V", "G10L"]
-
-# Sub-classes that most precisely capture core AI/ML (narrower cut)
-IPC_CORE_AI = ["G06N"]
 
 
 def fetch_ai_patents(
@@ -116,16 +131,57 @@ def fetch_ai_patents(
     raw_dir: str | Path = "data/raw",
 ) -> pd.DataFrame:
     """
-    Return patent application counts for AI-related IPC classes, by country and year.
-
-    The PATS_IPC dataset counts PCT international patent applications filed
-    under the Patent Cooperation Treaty — a standard cross-country measure.
-
-    Columns: country_code, year, ipc_class, patent_applications
+    Return PCT patent application counts for AI-related IPC classes, by country-year.
     """
     classes = ipc_classes or IPC_AI_CLASSES
     logger.info("Fetching AI patents for IPC classes: %s", classes)
 
+    all_frames = []
+    for ipc in classes:
+        try:
+            df_raw = fetch_dataset_new(
+                dataflow="pats",
+                key=f"all.{ipc}",
+                start_period=start_year,
+                end_period=end_year,
+            )
+            df = normalise_new_api(df_raw)
+            df["ipc_class"] = ipc
+            all_frames.append(df)
+            logger.info("  ✓ Patents %s: %d rows", ipc, len(df))
+        except Exception as exc:
+            logger.warning("  ✗ Could not fetch patents for %s: %s", ipc, exc)
+
+    if not all_frames:
+        logger.warning("No patent data retrieved — trying old API fallback…")
+        return _fetch_patents_old_api(classes, start_year, end_year, raw_dir)
+
+    df_all = pd.concat(all_frames, ignore_index=True)
+    save_raw(df_all, "oecd_patents_raw", raw_dir)
+
+    id_cols = [c for c in ("country_code", "year") if c in df_all.columns]
+
+    # Total AI patents across all classes
+    df_total = (
+        df_all.groupby(id_cols)["value"].sum().reset_index()
+        .rename(columns={"value": "ai_patents_total"})
+    )
+
+    # Core AI/ML only (G06N)
+    df_g06n = (
+        df_all[df_all["ipc_class"] == "G06N"]
+        .groupby(id_cols)["value"].sum().reset_index()
+        .rename(columns={"value": "ai_patents_g06n_ml"})
+    )
+
+    df_out = df_total.merge(df_g06n, on=id_cols, how="left")
+    logger.info("Patents: %d country-year rows", len(df_out))
+    return df_out
+
+
+def _fetch_patents_old_api(classes, start_year, end_year, raw_dir):
+    """Fallback: fetch patents from the old OECD API."""
+    from .oecd_api import fetch_dataset_old, normalise_old_api
     all_frames = []
     for ipc in classes:
         try:
@@ -139,52 +195,27 @@ def fetch_ai_patents(
             df["ipc_class"] = ipc
             all_frames.append(df)
         except Exception as exc:
-            logger.warning("Could not fetch patents for %s: %s", ipc, exc)
-
+            logger.warning("Old API patent fetch failed for %s: %s", ipc, exc)
     if not all_frames:
-        logger.error("No patent data retrieved.")
         return pd.DataFrame()
-
     df_all = pd.concat(all_frames, ignore_index=True)
-
-    # Keep only patent application count column
-    val_col = "value"
-    id_cols = [c for c in ("country_code", "year", "ipc_class") if c in df_all.columns]
-    df_all = df_all[id_cols + [val_col]].rename(columns={val_col: "patent_applications"})
-
-    # Aggregate all AI classes into a single "ai_patents_total" column
-    df_total = (
-        df_all.groupby(["country_code", "year"])["patent_applications"]
-        .sum()
-        .reset_index()
-        .rename(columns={"patent_applications": "ai_patents_total"})
-    )
-
-    # Also keep G06N (core AI/ML) separately
-    df_g06n = (
-        df_all[df_all["ipc_class"] == "G06N"]
-        .rename(columns={"patent_applications": "ai_patents_g06n_ml"})
-        .drop(columns="ipc_class", errors="ignore")
-    )
-
-    df_out = df_total.merge(df_g06n[["country_code", "year", "ai_patents_g06n_ml"]], on=["country_code", "year"], how="left")
-
     save_raw(df_all, "oecd_patents_raw", raw_dir)
-    logger.info("Patents: %d country-year rows", len(df_out))
-    return df_out
+    id_cols = [c for c in ("country_code", "year") if c in df_all.columns]
+    return (
+        df_all.groupby(id_cols)["value"].sum().reset_index()
+        .rename(columns={"value": "ai_patents_total"})
+    )
 
 
-# ── 3.  ICT access & usage (ICT_HH2) ─────────────────────────────────────────
+# ── 3.  ICT access & usage ────────────────────────────────────────────────────
 
-ICT_INDICATORS = {
-    "HH_IACC":      "ict_hh_internet_access_pct",
-    "HH_IRUS":      "ict_hh_internet_use_pct",
-    "IND_IRUS":     "ict_ind_internet_use_pct",
-    "HH_BB":        "ict_hh_broadband_access_pct",
-    "HH_SBBD":      "ict_hh_singleplay_broadband_pct",
-    "HH_PCMP":      "ict_hh_computer_access_pct",
-    "IND_SHOP":     "ict_ind_online_shopping_pct",
-    "IND_EBANK":    "ict_ind_online_banking_pct",
+ICT_MEASURES = {
+    "HH_IACC":   "ict_hh_internet_access_pct",
+    "HH_IRUS":   "ict_hh_internet_use_pct",
+    "IND_IRUS":  "ict_ind_internet_use_pct",
+    "HH_BB":     "ict_hh_broadband_access_pct",
+    "IND_SHOP":  "ict_ind_online_shopping_pct",
+    "IND_EBANK": "ict_ind_online_banking_pct",
 }
 
 
@@ -193,91 +224,80 @@ def fetch_ict(
     end_year: int = 2024,
     raw_dir: str | Path = "data/raw",
 ) -> pd.DataFrame:
-    """
-    Return ICT household / individual usage indicators as a wide country-year DataFrame.
-    """
-    logger.info("Fetching ICT access & usage (ICT_HH2)…")
+    """Return ICT household/individual usage indicators as a wide country-year DataFrame."""
+    logger.info("Fetching ICT access & usage…")
     try:
-        df_raw = fetch_dataset_old(
-            dataset_id="ICT_HH2",
-            filter_expr="all",
-            start_year=start_year,
-            end_year=end_year,
+        df_raw = fetch_dataset_new(
+            dataflow="ict",
+            key="all",
+            start_period=start_year,
+            end_period=end_year,
         )
     except Exception as exc:
-        logger.error("ICT fetch failed: %s", exc)
-        return pd.DataFrame()
-
-    save_raw(df_raw, "oecd_ict_raw", raw_dir)
-    df = normalise_old_api(df_raw)
-
-    # Identify the indicator dimension (varies by export)
-    ind_col = next((c for c in ("IND", "Indicator", "MEASURE", "VAR") if c in df.columns), None)
-    if ind_col is None:
-        logger.warning("Cannot identify indicator column in ICT dataset; returning raw.")
+        logger.warning("ICT new API failed (%s); trying old API…", exc)
+        try:
+            from .oecd_api import fetch_dataset_old, normalise_old_api
+            df_raw = fetch_dataset_old("ICT_HH2", start_year=start_year, end_year=end_year)
+            df = normalise_old_api(df_raw)
+        except Exception as exc2:
+            logger.error("ICT fetch failed entirely: %s", exc2)
+            return pd.DataFrame()
+        save_raw(df, "oecd_ict_raw", raw_dir)
         return df
 
-    df = df[df[ind_col].isin(ICT_INDICATORS.keys())].copy()
-    df[ind_col] = df[ind_col].map(lambda x: ICT_INDICATORS.get(x, x.lower()))
+    save_raw(df_raw, "oecd_ict_raw", raw_dir)
+    df = normalise_new_api(df_raw)
+
+    measure_col = next(
+        (c for c in df.columns if c.upper() in ("MEASURE", "IND", "INDICATOR", "VARIABLE")), None
+    )
+    if measure_col is None:
+        return df
+
+    df = df[df[measure_col].isin(ICT_MEASURES)].copy()
+    df[measure_col] = df[measure_col].map(lambda x: ICT_MEASURES.get(x, x.lower()))
 
     id_cols = [c for c in ("country_code", "year") if c in df.columns]
-    df = df.pivot_table(index=id_cols, columns=ind_col, values="value", aggfunc="mean").reset_index()
+    df = (
+        df[id_cols + [measure_col, "value"]]
+        .pivot_table(index=id_cols, columns=measure_col, values="value", aggfunc="mean")
+        .reset_index()
+    )
     df.columns.name = None
     logger.info("ICT: %d country-year rows", len(df))
     return df
 
 
-# ── 4.  Business R&D by industry (BERD_NACE2) ────────────────────────────────
-
-# NACE Rev.2 divisions most relevant to AI / high-tech
-NACE_HI_TECH = [
-    "J",    # Information and communication
-    "J58",  # Publishing
-    "J59",  # Motion picture, video, TV
-    "J61",  # Telecommunications
-    "J62",  # Computer programming, consultancy
-    "J63",  # Information service activities
-    "M72",  # Scientific research and development
-    "C26",  # Computer, electronic and optical products
-]
-
+# ── 4.  Business R&D by industry (BERD) ──────────────────────────────────────
 
 def fetch_berd(
     start_year: int = 2010,
     end_year: int = 2024,
     raw_dir: str | Path = "data/raw",
 ) -> pd.DataFrame:
-    """
-    Return business R&D expenditure in ICT-intensive industries, by country-year.
-    """
-    logger.info("Fetching BERD by industry (BERD_NACE2)…")
+    """Return business R&D expenditure aggregated over ICT-intensive industries."""
+    logger.info("Fetching BERD by industry…")
     try:
-        df_raw = fetch_dataset_old(
-            dataset_id="BERD_NACE2",
-            filter_expr="all",
-            start_year=start_year,
-            end_year=end_year,
+        df_raw = fetch_dataset_new(
+            dataflow="berd",
+            key="all",
+            start_period=start_year,
+            end_period=end_year,
         )
     except Exception as exc:
-        logger.error("BERD fetch failed: %s", exc)
-        return pd.DataFrame()
+        logger.warning("BERD new API failed (%s); trying old API…", exc)
+        try:
+            from .oecd_api import fetch_dataset_old, normalise_old_api
+            df_raw = fetch_dataset_old("BERD_NACE2", start_year=start_year, end_year=end_year)
+            df = normalise_old_api(df_raw)
+        except Exception as exc2:
+            logger.error("BERD fetch failed entirely: %s", exc2)
+            return pd.DataFrame()
+        save_raw(df, "oecd_berd_raw", raw_dir)
+        return df
 
     save_raw(df_raw, "oecd_berd_raw", raw_dir)
-    df = normalise_old_api(df_raw)
-
-    # Keep total ICT sector R&D in USD PPP millions
-    ind_col = next((c for c in ("IND", "Industry", "NACE", "ISIC") if c in df.columns), None)
-    meas_col = next((c for c in ("MEASURE", "Measure", "MEAS") if c in df.columns), None)
-
-    # Aggregate over all hi-tech industries
-    if ind_col:
-        df = df[df[ind_col].isin(NACE_HI_TECH)].copy()
-
-    # Keep only current USD PPP if available
-    if meas_col:
-        usd_vals = df[meas_col].str.upper().str.contains("USD|MIO|PPP", na=False)
-        if usd_vals.any():
-            df = df[usd_vals].copy()
+    df = normalise_new_api(df_raw)
 
     id_cols = [c for c in ("country_code", "year") if c in df.columns]
     df_agg = (
@@ -288,32 +308,21 @@ def fetch_berd(
     return df_agg
 
 
-# ── 5.  Stanford HAI AI Index (best-effort download) ─────────────────────────
+# ── 5.  Stanford HAI AI Index (best-effort) ───────────────────────────────────
 
 STANFORD_HAI_URL = (
     "https://aiindex.stanford.edu/wp-content/uploads/"
     "2024/04/HAI_2024_AI-Index-Report.xlsx"
 )
 
-INVESTMENT_SHEET = "Figure 4.2.1"   # Sheet name may vary across annual editions
-
 
 def download_stanfordhai_index(
     dest_dir: str | Path = "data/raw",
     url: str = STANFORD_HAI_URL,
 ) -> Optional[pd.DataFrame]:
-    """
-    Attempt to download the Stanford HAI AI Index annual report Excel file
-    and extract the country-level private AI investment table.
-
-    This is a *best-effort* function — the URL and sheet names change each year.
-    If the download fails, a clear message guides you to the manual download page.
-
-    Returns a DataFrame or None if the download fails.
-    """
-    logger.info("Attempting Stanford HAI AI Index download…")
+    """Attempt to download the Stanford HAI AI Index Excel file."""
     dest = Path(dest_dir) / "stanford_hai_ai_index.xlsx"
-
+    logger.info("Attempting Stanford HAI AI Index download…")
     try:
         resp = requests.get(url, timeout=60, stream=True,
                             headers={"User-Agent": "ai-panel-data/1.0"})
@@ -326,30 +335,17 @@ def download_stanfordhai_index(
     except Exception as exc:
         logger.warning(
             "Stanford HAI download failed: %s\n"
-            "→ Please download manually from https://aiindex.stanford.edu/report/ "
-            "and place the Excel file at %s",
-            exc,
-            dest,
+            "→ Download manually from https://aiindex.stanford.edu/report/ "
+            "and place at %s", exc, dest
         )
-        if not dest.exists():
-            return None
+        return None
 
-    # Parse investment data from the Excel
     try:
         xls = pd.ExcelFile(dest)
-        # Look for investment-related sheet
-        investment_sheet = next(
-            (s for s in xls.sheet_names if "4.2" in s or "invest" in s.lower()), None
-        )
-        if investment_sheet is None:
-            logger.warning("Could not find investment sheet in HAI Excel. Sheets: %s", xls.sheet_names)
+        sheet = next((s for s in xls.sheet_names if "invest" in s.lower() or "4.2" in s), None)
+        if sheet is None:
             return None
-
-        df = xls.parse(investment_sheet, header=1)
-        df.columns = [str(c).strip() for c in df.columns]
-        logger.info("HAI investment data: %d rows from sheet '%s'", len(df), investment_sheet)
-        return df
-
+        return xls.parse(sheet, header=1)
     except Exception as exc:
         logger.warning("Could not parse HAI Excel: %s", exc)
         return None
@@ -362,24 +358,20 @@ def fetch_all_oecd_ai(
     raw_dir: str | Path = "data/raw",
 ) -> dict[str, pd.DataFrame]:
     """
-    Fetch all OECD AI-relevant datasets according to *config* and return
-    a dict mapping dataset name → DataFrame.
-
-    Called by the main pipeline (pipeline.py).
+    Fetch all OECD AI-relevant datasets per config and return a dict of DataFrames.
+    Called by pipeline.py.
     """
     oecd_cfg = config.get("oecd", {})
     start = config["pipeline"]["start_year"]
-    end = config["pipeline"]["end_year"]
-
+    end   = config["pipeline"]["end_year"]
     results: dict[str, pd.DataFrame] = {}
 
     if oecd_cfg.get("msti", {}).get("enabled", True):
         inds = oecd_cfg.get("msti", {}).get("indicators") or None
         results["msti"] = fetch_msti(indicators=inds, start_year=start, end_year=end, raw_dir=raw_dir)
-
-    if oecd_cfg.get("patents", {}).get("enabled", True):
-        ipc = oecd_cfg.get("patents", {}).get("ipc_classes") or None
-        results["patents"] = fetch_ai_patents(ipc_classes=ipc, start_year=start, end_year=end, raw_dir=raw_dir)
+        # Note: ICT patents (P_ICTPCT), total PCT patents (P_PCT), and triadic
+        # patent families (P_TRIAD) are already included in the MSTI dataset above,
+        # so the separate IPC-class patent fetch is skipped.
 
     if oecd_cfg.get("ict", {}).get("enabled", True):
         results["ict"] = fetch_ict(start_year=start, end_year=end, raw_dir=raw_dir)
@@ -387,7 +379,6 @@ def fetch_all_oecd_ai(
     if oecd_cfg.get("berd", {}).get("enabled", True):
         results["berd"] = fetch_berd(start_year=start, end_year=end, raw_dir=raw_dir)
 
-    # Best-effort Stanford HAI
     hai_df = download_stanfordhai_index(dest_dir=raw_dir)
     if hai_df is not None:
         results["stanford_hai_investment"] = hai_df

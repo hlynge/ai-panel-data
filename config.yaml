@@ -82,7 +82,6 @@ worldbank:
     IT.NET.USER.ZS:    internet_users_pct_pop
     IT.CEL.SETS.P2:    mobile_subscriptions_per100
     IT.NET.BBND.P2:    fixed_broadband_per100
-    GB.XPD.RSDV.GD.ZS: rd_expenditure_pct_gdp
     # Education
     SE.TER.ENRR:       tertiary_enrollment_gross_pct
     SE.XPD.TOTL.GD.ZS: education_expenditure_pct_gdp
@@ -93,8 +92,6 @@ worldbank:
     RL.EST:  wgi_rule_of_law
     VA.EST:  wgi_voice_and_accountability
     PV.EST:  wgi_political_stability
-    # Business environment
-    IC.BUS.EASE.XQ: ease_of_doing_business_rank
 
 # ─── IMF World Economic Outlook ───────────────────────────────────────────────
 imf:

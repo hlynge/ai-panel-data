@@ -11,7 +11,9 @@ library(ggplot2)
 library(tidyr)
 
 # -- Paths ---------------------------------------------------------------------
-data_dir   <- "/Users/lynge/Nextcloud/Research/Data/OECD.ai/data/processed/"
+# Assumes you run this script from the project root (where main.py lives).
+# Adjust data_dir if you placed the pipeline output elsewhere.
+data_dir   <- "data/processed/"
 output_dir <- "outputs/"
 
 # -- Load data -----------------------------------------------------------------

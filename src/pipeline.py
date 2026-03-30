@@ -328,25 +328,50 @@ def _save_outputs(df: pd.DataFrame, out_dir: Path, formats: list[str]) -> None:
 
 def _save_codebook(df: pd.DataFrame, out_dir: Path) -> None:
     """
-    Generate a simple codebook CSV: column name, dtype, % non-missing,
-    min/max for numerics.
+    Generate a rich codebook CSV by merging:
+      1. Auto-computed stats  (dtype, % non-missing, min, max, mean)
+      2. Hand-curated metadata from codebook_meta.csv
+         (label, description, source, unit)
+
+    The metadata file is looked up relative to the current working directory
+    (i.e. the project root).  If it is absent the codebook is still saved,
+    just without the descriptive columns.
     """
+    # ── 1. Auto-computed statistics ───────────────────────────────────────────
     rows = []
     for col in df.columns:
         series = df[col]
         pct_valid = series.notna().mean() * 100
-        row = {
-            "column": col,
-            "dtype": str(series.dtype),
+        row: dict = {
+            "variable":        col,
+            "dtype":           str(series.dtype),
             "pct_non_missing": round(pct_valid, 1),
         }
         if pd.api.types.is_numeric_dtype(series):
-            row["min"] = series.min()
-            row["max"] = series.max()
-            row["mean"] = round(series.mean(), 4)
+            row["min"]  = round(float(series.min()),  4) if series.notna().any() else None
+            row["max"]  = round(float(series.max()),  4) if series.notna().any() else None
+            row["mean"] = round(float(series.mean()), 4) if series.notna().any() else None
         rows.append(row)
 
     codebook = pd.DataFrame(rows)
+
+    # ── 2. Merge hand-curated metadata ────────────────────────────────────────
+    meta_path = Path("codebook_meta.csv")
+    if meta_path.exists():
+        meta = pd.read_csv(meta_path)
+        # Left-join so every column in the panel is represented
+        codebook = codebook.merge(meta, on="variable", how="left")
+        # Reorder: identifiers + descriptive cols first, then stats
+        id_cols   = ["variable", "label", "description", "source", "unit"]
+        stat_cols = ["dtype", "pct_non_missing", "min", "max", "mean"]
+        other     = [c for c in codebook.columns if c not in id_cols + stat_cols]
+        codebook  = codebook[id_cols + stat_cols + other]
+        logger.info("Merged codebook metadata from %s", meta_path)
+    else:
+        logger.warning(
+            "codebook_meta.csv not found at %s; saving stats-only codebook.", meta_path
+        )
+
     path = out_dir / "codebook.csv"
     codebook.to_csv(path, index=False)
-    logger.info("Saved codebook → %s", path)
+    logger.info("Saved codebook → %s  (%d variables)", path, len(codebook))

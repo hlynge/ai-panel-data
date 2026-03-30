@@ -1,0 +1,71 @@
+variable,label,description,source,unit
+iso3,Country code,ISO 3166-1 alpha-3 country identifier (three-letter code).,—,ISO 3166-1 alpha-3
+year,Year,Calendar year of observation.,—,year
+country_name,Country name,Full English country name from V-Dem.,V-Dem,—
+ict_patents_pct,ICT patent share,ICT-related patent applications as a share of total triadic patent families.,OECD MSTI,% of total triadic patents
+rd_total_pct_gdp,R&D expenditure (% GDP),Gross domestic expenditure on R&D (GERD) as a share of GDP.,OECD MSTI,% of GDP
+rd_business_pct_gdp,Business R&D (% GDP),Business enterprise R&D expenditure (BERD) as a share of GDP.,OECD MSTI,% of GDP
+rd_government_pct_gdp,Government R&D (% GDP),Government-performed R&D expenditure (GOVERD) as a share of GDP.,OECD MSTI,% of GDP
+rd_highered_pct_gdp,Higher-education R&D (% GDP),Higher-education-sector R&D expenditure (HERD) as a share of GDP.,OECD MSTI,% of GDP
+rd_per_capita_usd_ppp,R&D per capita (USD PPP),Total R&D expenditure per capita in USD at purchasing power parity.,OECD MSTI,USD PPP per capita
+researchers_per1000_employed,Researchers per 1 000 employed,Number of full-time-equivalent researchers per 1 000 persons employed.,OECD MSTI,FTE per 1 000 employed
+total_pct_patents,Triadic patent share,Country's share of all triadic patent families filed with the IP5 offices.,OECD MSTI,% of world total
+triadic_patent_families,Triadic patent families,Count of triadic patent families (filed with EPO + JPO + USPTO) attributed to the country.,OECD MSTI,count
+ai_patent_families_triadic,AI triadic patent families,Triadic patent families using OECD's official AI patent definition (CPC classification + text mining). Covers IP5 patent offices.,OECD Patents,count
+ai_patent_applications_wipo,AI patent applications (WIPO PCT),AI patent applications filed through WIPO's Patent Cooperation Treaty (PCT) channel using the OECD AI patent definition.,OECD Patents,count
+ict_hh_internet_access_pct,HH internet access (%),Percentage of households with internet access at home.,OECD ICT,% of households
+ict_hh_broadband_access_pct,HH broadband access (%),Percentage of households with broadband internet access.,OECD ICT,% of households
+ict_hh_fixed_broadband_pct,HH fixed broadband (%),Percentage of households with a fixed broadband connection.,OECD ICT,% of households
+ict_hh_mobile_broadband_pct,HH mobile broadband (%),Percentage of households with mobile broadband internet access.,OECD ICT,% of households
+ict_hh_computer_access_pct,HH computer access (%),Percentage of households that own or have access to a computer.,OECD ICT,% of households
+berd_ict_usd_ppp_mn,ICT business R&D (USD PPP mn),Business enterprise R&D expenditure in ICT-intensive industries summed across NACE Rev.2 sectors. Millions of USD at PPP.,OECD BERD,USD PPP millions
+gdp_per_capita_const2015usd,GDP per capita (const. 2015 USD),GDP per capita in constant 2015 US dollars.,World Bank WDI,constant 2015 USD
+gdp_growth_annual_pct,GDP growth (annual %),Annual percentage growth rate of GDP at market prices (constant local currency).,World Bank WDI,% per year
+gdp_current_usd,GDP (current USD),Gross domestic product in current US dollars.,World Bank WDI,current USD
+trade_pct_gdp,Trade openness (% GDP),Sum of exports and imports of goods and services as a share of GDP.,World Bank WDI,% of GDP
+gross_capital_formation_pct_gdp,Gross capital formation (% GDP),Gross capital formation (fixed capital + inventories) as a share of GDP.,World Bank WDI,% of GDP
+inflation_cpi_pct,Inflation (CPI %),Annual change in the consumer price index.,World Bank WDI,% per year
+unemployment_pct,Unemployment rate (%),Share of the labour force that is unemployed but seeking work.,World Bank WDI,% of labour force
+population_total,Population,Total population.,World Bank WDI,persons
+internet_users_pct_pop,Internet users (% population),Individuals who used the internet in the last three months.,World Bank WDI,% of population
+mobile_subscriptions_per100,Mobile subscriptions per 100,Active mobile-cellular telephone subscriptions per 100 people.,World Bank WDI,per 100 people
+fixed_broadband_per100,Fixed broadband per 100,Fixed broadband internet subscriptions per 100 people.,World Bank WDI,per 100 people
+tertiary_enrollment_gross_pct,Tertiary enrolment (gross %),Gross enrolment ratio in tertiary education regardless of age.,World Bank WDI,% of tertiary-age population
+education_expenditure_pct_gdp,Education expenditure (% GDP),Government expenditure on education as a share of GDP.,World Bank WDI,% of GDP
+wgi_control_of_corruption,WGI: Control of corruption,Perceptions of the extent to which public power is exercised for private gain. Ranges roughly −2.5 (worst) to +2.5 (best).,World Bank WGI,index (−2.5 to +2.5)
+wgi_government_effectiveness,WGI: Government effectiveness,Perceptions of the quality of public services and the civil service. Ranges roughly −2.5 to +2.5.,World Bank WGI,index (−2.5 to +2.5)
+wgi_regulatory_quality,WGI: Regulatory quality,Perceptions of the government's ability to formulate and implement sound policies. Ranges roughly −2.5 to +2.5.,World Bank WGI,index (−2.5 to +2.5)
+wgi_rule_of_law,WGI: Rule of law,Perceptions of the extent to which agents have confidence in the rules of society. Ranges roughly −2.5 to +2.5.,World Bank WGI,index (−2.5 to +2.5)
+wgi_voice_and_accountability,WGI: Voice and accountability,Perceptions of the extent to which citizens can participate in government selection and freedom of expression. Ranges roughly −2.5 to +2.5.,World Bank WGI,index (−2.5 to +2.5)
+wgi_political_stability,WGI: Political stability,Perceptions of the likelihood of political instability or politically-motivated violence. Ranges roughly −2.5 to +2.5.,World Bank WGI,index (−2.5 to +2.5)
+imf_gdp_current_usd_bn,IMF GDP (current USD bn),Gross domestic product in current US dollars. Source: IMF World Economic Outlook.,IMF WEO,current USD billions
+imf_gdp_per_capita_current_usd,IMF GDP per capita (current USD),GDP per capita in current US dollars. Source: IMF World Economic Outlook.,IMF WEO,current USD
+imf_gdp_real_growth_pct,IMF real GDP growth (%),Annual percentage change in real (constant prices) GDP. Source: IMF WEO.,IMF WEO,% per year
+imf_inflation_avg_pct,IMF inflation average (%),Average consumer price inflation rate. Source: IMF WEO.,IMF WEO,% per year
+imf_unemployment_pct,IMF unemployment rate (%),Unemployment rate as a share of the total labour force. Source: IMF WEO.,IMF WEO,% of labour force
+imf_current_account_pct_gdp,Current account balance (% GDP),Current account balance as a share of GDP. Source: IMF WEO.,IMF WEO,% of GDP
+imf_net_lending_pct_gdp,Net lending / borrowing (% GDP),General government net lending (+) or borrowing (−) as a share of GDP. Source: IMF WEO.,IMF WEO,% of GDP
+imf_gross_debt_pct_gdp,Gross government debt (% GDP),General government gross debt as a share of GDP. Source: IMF WEO.,IMF WEO,% of GDP
+vdem_liberal_democracy,V-Dem: Liberal democracy index,Extent to which liberal democratic ideals are achieved. Combines electoral democracy with individual and minority rights protections. Scale 0–1.,V-Dem,index (0–1)
+vdem_electoral_democracy,V-Dem: Electoral democracy index,Extent to which the ideal of electoral democracy is achieved. Scale 0–1.,V-Dem,index (0–1)
+vdem_civil_liberties,V-Dem: Civil liberties index,Extent to which civil liberties are respected. Scale 0–1.,V-Dem,index (0–1)
+vdem_rule_of_law,V-Dem: Rule of law index,Extent to which laws are transparently and equally enforced. Scale 0–1.,V-Dem,index (0–1)
+vdem_political_corruption,V-Dem: Political corruption index,Extent of political corruption across all government branches. Scale 0–1 (higher = more corrupt).,V-Dem,index (0–1; higher = more corrupt)
+vdem_clean_elections,V-Dem: Clean elections index,Extent to which elections are free and fair. Scale 0–1.,V-Dem,index (0–1)
+vdem_freedom_expression,V-Dem: Freedom of expression index,Extent to which freedom of expression and alternative sources of information are protected. Scale 0–1.,V-Dem,index (0–1)
+vdem_accountability,V-Dem: Accountability index,Extent to which political leaders are held accountable between elections. Scale 0–1.,V-Dem,index (0–1)
+vdem_participatory_democracy,V-Dem: Participatory democracy index,Extent to which the ideal of participatory democracy is achieved. Scale 0–1.,V-Dem,index (0–1)
+vdem_egalitarian_democracy,V-Dem: Egalitarian democracy index,Extent to which the ideal of egalitarian democracy is achieved. Scale 0–1.,V-Dem,index (0–1)
+vdem_party_nationalization,V-Dem: Party nationalization,Degree to which political parties campaign and receive votes uniformly across the country. Scale 0–1.,V-Dem,index (0–1)
+vdem_presidentialism,V-Dem: Presidentialism index,Relative power of the president versus the legislature. Higher values indicate stronger presidentialism. Scale 0–1.,V-Dem,index (0–1)
+ai_paper_count,AI publications,Number of scientific papers classified under the Artificial Intelligence concept in OpenAlex (concept ID C154945302). Counts papers with at least one author affiliated with an institution in the country.,OpenAlex,count
+ml_paper_count,ML publications,Number of scientific papers classified under the Machine Learning concept in OpenAlex (concept ID C119857082). Counts papers with at least one author affiliated with an institution in the country.,OpenAlex,count
+top500_n_systems,Top500 systems (count),Number of supercomputer systems from the country appearing in the Top500 biannual list (maximum of June and November lists for the year).,Top500.org,count
+top500_total_rmax,Top500 total Rmax (PFlop/s),Sum of measured peak performance (Rmax) across all country systems in the Top500 list. In petaflops per second (PFlop/s). Annual maximum across June and November lists.,Top500.org,PFlop/s
+top500_max_rmax,Top500 top-system Rmax (PFlop/s),Rmax of the single highest-ranked system from the country in the Top500 list. In petaflops per second (PFlop/s). Annual maximum across June and November lists.,Top500.org,PFlop/s
+ai_model_count,AI models released,Number of AI models with at least one organisation from the country listed as a creator in the Epoch AI database. Multi-organisation models are attributed to each contributing country.,Epoch AI,count
+large_model_count,Large AI models released,Number of AI models with parameter count ≥ 1 billion attributed to the country. Proxy for compute-intensive frontier-class models.,Epoch AI,count
+ai_patent_intensity,AI patent intensity,Ratio of AI triadic patent families to total R&D expenditure as a share of GDP. Measures patenting productivity per unit of R&D input.,Derived,AI triadic patent families per % of GDP
+log_gdp_per_capita_const2015usd,Log GDP per capita (const. 2015 USD),Natural logarithm of GDP per capita in constant 2015 US dollars.,Derived,log(constant 2015 USD)
+internet_access_gap_pct,Internet access gap (%),Share of the population without internet access (100 minus internet users %). Higher values indicate a larger digital divide.,Derived,% of population
+oecd_member,OECD member,Binary indicator equal to 1 if the country is a current member of the OECD and 0 otherwise.,Derived,binary (0/1)

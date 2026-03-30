@@ -113,7 +113,7 @@ vdem:
   enabled: true
   # If you have already downloaded the V-Dem CSV manually, set the path here.
   # Otherwise, the script will attempt to download the latest version.
-  local_file: "/Users/lynge/Nextcloud/Research/Data/VDem/v16/V-Dem-CY-Full+Others-v16.csv"          # e.g. "data/raw/V-Dem-CY-Full-v15.csv"
+  local_file: ""          # e.g. "data/raw/V-Dem-CY-Full+Others-v16.csv"
   indicators:
     v2x_libdem:           vdem_liberal_democracy
     v2x_polyarchy:        vdem_electoral_democracy

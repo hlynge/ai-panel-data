@@ -45,7 +45,8 @@ def fetch_imf_indicator(
     DataFrame with columns: iso3, year, <friendly_name>
     """
     url = f"{IMF_API_BASE}/{indicator}"
-    resp = fetch_url(url, timeout=60)
+    # IMF's Akamai CDN blocks most custom User-Agents; mimic curl
+    resp = fetch_url(url, timeout=60, headers={"User-Agent": "curl/8.0"})
     data = resp.json()
 
     # Response structure: {"values": {indicator: {iso3: {year: value}}}}

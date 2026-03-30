@@ -42,7 +42,7 @@ def load_config(path: str | Path = "config.yaml") -> dict:
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 _DEFAULT_HEADERS = {
-    "User-Agent": "ai-panel-data/1.0 (research project; contact: hlynge1979@gmail.com)"
+    "User-Agent": "ai-panel-data/1.0 (academic research project)"
 }
 
 def fetch_url(

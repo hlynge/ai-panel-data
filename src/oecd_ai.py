@@ -209,13 +209,13 @@ def _fetch_patents_old_api(classes, start_year, end_year, raw_dir):
 
 # ── 3.  ICT access & usage ────────────────────────────────────────────────────
 
+# New OECD ICT dataflow (DSD_ICT_HH_IND@DF_HH) measure codes
 ICT_MEASURES = {
-    "HH_IACC":   "ict_hh_internet_access_pct",
-    "HH_IRUS":   "ict_hh_internet_use_pct",
-    "IND_IRUS":  "ict_ind_internet_use_pct",
-    "HH_BB":     "ict_hh_broadband_access_pct",
-    "IND_SHOP":  "ict_ind_online_shopping_pct",
-    "IND_EBANK": "ict_ind_online_banking_pct",
+    "B1_HH":   "ict_hh_internet_access_pct",
+    "B21_HH":  "ict_hh_broadband_access_pct",
+    "B21A_HH": "ict_hh_fixed_broadband_pct",
+    "B21B_HH": "ict_hh_mobile_broadband_pct",
+    "A1_HH":   "ict_hh_computer_access_pct",
 }
 
 
@@ -249,18 +249,23 @@ def fetch_ict(
     df = normalise_new_api(df_raw)
 
     measure_col = next(
-        (c for c in df.columns if c.upper() in ("MEASURE", "IND", "INDICATOR", "VARIABLE")), None
+        (c for c in df.columns if c == "MEASURE"), None
     )
     if measure_col is None:
+        logger.warning("ICT: no MEASURE column found. Columns: %s", df.columns.tolist())
         return df
 
+    # Filter to percentage rows only (not absolute counts)
+    if "UNIT_MEASURE" in df.columns:
+        df = df[df["UNIT_MEASURE"].str.contains("PT", na=False)].copy()
+
     df = df[df[measure_col].isin(ICT_MEASURES)].copy()
-    df[measure_col] = df[measure_col].map(lambda x: ICT_MEASURES.get(x, x.lower()))
+    df["_indicator"] = df[measure_col].map(ICT_MEASURES)
 
     id_cols = [c for c in ("country_code", "year") if c in df.columns]
     df = (
-        df[id_cols + [measure_col, "value"]]
-        .pivot_table(index=id_cols, columns=measure_col, values="value", aggfunc="mean")
+        df[id_cols + ["_indicator", "value"]]
+        .pivot_table(index=id_cols, columns="_indicator", values="value", aggfunc="mean")
         .reset_index()
     )
     df.columns.name = None

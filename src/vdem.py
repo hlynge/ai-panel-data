@@ -40,7 +40,7 @@ logger = get_logger(__name__)
 # Latest known direct-download URL (update if V-Dem releases a new version)
 # V-Dem v15 (2025):
 VDEM_DOWNLOAD_URL = (
-    "https://v-dem.net/media/datasets/V-Dem-CY-Full+Others-v15.csv.zip"
+    "https://v-dem.net/media/datasets/V-Dem-CY-Full+Others-v16.csv.zip"
 )
 
 # Fallback: Harvard Dataverse permanent DOI landing page

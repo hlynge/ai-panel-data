@@ -46,8 +46,8 @@ def _rate_limit() -> None:
 DATAFLOWS = {
     "msti":    "OECD.STI.STP,DSD_MSTI@DF_MSTI,1.3",
     "pats":    "OECD.STI.STP,DSD_PATS@DF_PATS_IPC,1.0",
-    "ict":     "OECD.STI.STP,DSD_ICT@DF_ICT_HH,1.0",
-    "berd":    "OECD.STI.STP,DSD_BERD@DF_BERD,1.0",
+    "ict":     "OECD.STI.DEP,DSD_ICT_HH_IND@DF_HH,1.1",
+    "berd":    "OECD.STI.STP,DSD_RDS_BERD@DF_BERD_INDU,1.0",
 }
 
 

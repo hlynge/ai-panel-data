@@ -3,7 +3,7 @@ pipeline.py — assemble a balanced country-year panel from all data sources.
 
 Workflow
 ────────
-1.  Fetch each source (OECD, World Bank, IMF, V-Dem).
+1.  Fetch each source (OECD, World Bank, IMF, V-Dem, OpenAlex, Top500, Epoch AI).
 2.  Standardise country identifiers to ISO3.
 3.  Outer-merge all sources on (iso3, year).
 4.  Apply the optional country filter from config.
@@ -23,9 +23,12 @@ from pathlib import Path
 import pandas as pd
 import pycountry
 
+from .epochai import fetch_all_epochai
 from .harmonize import apply_country_filter, standardise_iso3
 from .imf import fetch_all_imf
 from .oecd_ai import fetch_all_oecd_ai
+from .openalex import fetch_all_openalex
+from .top500 import fetch_all_top500
 from .utils import ensure_dir, get_logger, load_config
 from .vdem import fetch_all_vdem
 from .worldbank import fetch_all_worldbank
@@ -106,9 +109,9 @@ def add_derived_variables(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    # AI patent intensity = AI patents per unit of total R&D spending
-    if "ai_patents_total" in df.columns and "rd_total_pct_gdp" in df.columns:
-        df["ai_patent_intensity"] = df["ai_patents_total"] / df["rd_total_pct_gdp"].replace(0, float("nan"))
+    # AI patent intensity = AI triadic patent families per unit of total R&D spending
+    if "ai_patent_families_triadic" in df.columns and "rd_total_pct_gdp" in df.columns:
+        df["ai_patent_intensity"] = df["ai_patent_families_triadic"] / df["rd_total_pct_gdp"].replace(0, float("nan"))
 
     # Log GDP per capita
     for col in ("gdp_per_capita_const2015usd", "imf_gdp_per_capita_current_usd"):
@@ -143,10 +146,6 @@ def _integrate_oecd(oecd_data: dict[str, pd.DataFrame]) -> pd.DataFrame:
     frames = []
     for name, df in oecd_data.items():
         if df.empty:
-            continue
-        if name == "stanford_hai_investment":
-            # HAI data has a bespoke structure — skip auto-merge for now
-            logger.info("Stanford HAI data available but needs manual integration (structure varies by year).")
             continue
 
         # Ensure country column is standardised
@@ -229,6 +228,30 @@ def run_pipeline(config_path: str | Path = "config.yaml") -> pd.DataFrame:
             df_vdem = _std(df_vdem, iso3_col="iso3")
             all_frames.append(df_vdem)
             logger.info("V-Dem: %d rows, %d cols", *df_vdem.shape)
+
+    # OpenAlex — AI & ML publication counts
+    if config.get("openalex", {}).get("enabled", True):
+        logger.info("─── OpenAlex ───────────────────────────────────")
+        df_oa = fetch_all_openalex(config, raw_dir=raw_dir)
+        if not df_oa.empty:
+            all_frames.append(df_oa)
+            logger.info("OpenAlex: %d rows, %d cols", *df_oa.shape)
+
+    # Top500 — supercomputer infrastructure
+    if config.get("top500", {}).get("enabled", True):
+        logger.info("─── Top500 ─────────────────────────────────────")
+        df_t5 = fetch_all_top500(config, raw_dir=raw_dir)
+        if not df_t5.empty:
+            all_frames.append(df_t5)
+            logger.info("Top500: %d rows, %d cols", *df_t5.shape)
+
+    # Epoch AI — AI model counts
+    if config.get("epochai", {}).get("enabled", True):
+        logger.info("─── Epoch AI ───────────────────────────────────")
+        df_ea = fetch_all_epochai(config, raw_dir=raw_dir)
+        if not df_ea.empty:
+            all_frames.append(df_ea)
+            logger.info("Epoch AI: %d rows, %d cols", *df_ea.shape)
 
     if not all_frames:
         raise RuntimeError("All data sources returned empty DataFrames. Check your config and network.")

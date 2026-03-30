@@ -108,6 +108,28 @@ imf:
     GGR_NGDP:    imf_gov_revenue_pct_gdp
     GGX_NGDP:    imf_gov_expenditure_pct_gdp
 
+# ─── OpenAlex (AI / ML publication counts) ───────────────────────────────────
+# Uses the free OpenAlex REST API — no authentication required.
+# Makes one request per year per concept (≤ 30 HTTP calls total).
+# Set fetch_ml: false to skip the Machine Learning concept and save ~15 calls.
+openalex:
+  enabled: true
+  fetch_ml: true      # also fetch ml_paper_count (concept C119857082)
+
+# ─── Top500 (supercomputer infrastructure) ────────────────────────────────────
+# Data from the biannual Top500 list, mirrored by World Bank Data360 (CC BY 4.0).
+# Produces: top500_n_systems, top500_total_rmax_pflops, top500_top1_rmax_pflops
+# Coverage: up to ~30 countries, 1993–2024; data dominated by USA and China.
+top500:
+  enabled: true
+
+# ─── Epoch AI (AI model counts) ───────────────────────────────────────────────
+# Downloads the Epoch AI "All AI Models" database (CC BY 4.0, ~3,200 models).
+# Produces: ai_model_count, large_model_count (≥ 1 B parameters)
+# Coverage: ~49 countries; data are US/China skewed.
+epochai:
+  enabled: true
+
 # ─── V-Dem (Varieties of Democracy) ──────────────────────────────────────────
 vdem:
   enabled: true

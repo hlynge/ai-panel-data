@@ -6,19 +6,26 @@ supports server-side year filtering, keeping responses fast and small.
 
 Datasets covered
 ────────────────
-  1. MSTI  — R&D expenditure & researcher counts (DSD_MSTI@DF_MSTI)
-  2. Patents — AI/ICT patent applications by IPC class (DSD_PATS@DF_PATS_REGION_ST)
-  3. ICT   — household internet/broadband access (DSD_ICT@DF_ICT_HH)
-  4. BERD  — business R&D by industry (DSD_BERD@DF_BERD)
+  1. MSTI       — R&D expenditure & researcher counts (DSD_MSTI@DF_MSTI)
+  2. AI Patents — OECD AI-specific patents (DSD_PATENTS@DF_PATENTS_OECDSPECIFIC)
+                  Uses OECD's official AI patent definition (CPC + text mining,
+                  see OECD AI Papers No. 30, 2024). Two series:
+                    • Triadic AI patent families (IP5 offices)
+                    • AI patent applications via WIPO PCT
+  3. ICT        — household internet/broadband access (DSD_ICT_HH_IND@DF_HH)
+  4. BERD       — business R&D by industry (DSD_RDS_BERD@DF_BERD_INDU)
+
+Note: Stanford HAI AI Index download was removed — the direct download URL
+returns HTML (login wall) rather than the Excel file, making it unreliable
+as a programmatic source.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional  # kept for type hints in fetch_* signatures
 
 import pandas as pd
-import requests
 
 from .oecd_api import fetch_dataset_new, normalise_new_api, DATAFLOWS
 from .utils import get_logger, save_raw
@@ -118,93 +125,82 @@ def fetch_msti(
     return df
 
 
-# ── 2.  AI / ICT Patents ──────────────────────────────────────────────────────
+# ── 2.  AI Patents (OECD official definition) ─────────────────────────────────
 
-# IPC classes most relevant to AI/ML
-IPC_AI_CLASSES = ["G06N", "G06F", "G06K", "G06T", "G06V", "G10L"]
+# Key structure for DSD_PATENTS@DF_PATENTS_OECDSPECIFIC has 11 key dimensions:
+#   PATENT_AUTHORITIES . FREQ . MEASURE . UNIT_MEASURE . DATE_TYPE .
+#   REF_AREA . PARTNER_AREA . AGENT_ROLE . COOPERATION_TYPE . WIPO .
+#   OECD_TECHNOLOGY_PATENT
+#
+# Fetch all authorities/measures/countries for AI technology using dots for
+# unspecified dimensions, then filter in Python.
+#
+# Selected series after filtering:
+#   PATENT_AUTHORITIES=9P50_2, MEASURE=PF → AI triadic patent families (IP5)
+#   PATENT_AUTHORITIES=9P50_1, MEASURE=AP → AI patent applications (WIPO PCT)
+#
+# Note: patent data typically lags 2–3 years; expect coverage to ~2021.
+
+_AI_PATENTS_KEY = "..........AI"   # all dims open, OECD_TECHNOLOGY_PATENT=AI
 
 
 def fetch_ai_patents(
-    ipc_classes: Optional[list[str]] = None,
     start_year: int = 2010,
     end_year: int = 2024,
     raw_dir: str | Path = "data/raw",
 ) -> pd.DataFrame:
     """
-    Return PCT patent application counts for AI-related IPC classes, by country-year.
+    Return OECD AI-specific patent counts by country-year.
+
+    Uses OECD's official AI patent definition (CPC codes + text mining,
+    OECD AI Papers No. 30, 2024) via DSD_PATENTS@DF_PATENTS_OECDSPECIFIC.
+    Returns two series:
+      - ai_patent_families_triadic   : IP5 triadic AI patent families
+      - ai_patent_applications_wipo  : WIPO PCT AI patent applications
     """
-    classes = ipc_classes or IPC_AI_CLASSES
-    logger.info("Fetching AI patents for IPC classes: %s", classes)
-
-    all_frames = []
-    for ipc in classes:
-        try:
-            df_raw = fetch_dataset_new(
-                dataflow="pats",
-                key=f"all.{ipc}",
-                start_period=start_year,
-                end_period=end_year,
-            )
-            df = normalise_new_api(df_raw)
-            df["ipc_class"] = ipc
-            all_frames.append(df)
-            logger.info("  ✓ Patents %s: %d rows", ipc, len(df))
-        except Exception as exc:
-            logger.warning("  ✗ Could not fetch patents for %s: %s", ipc, exc)
-
-    if not all_frames:
-        logger.warning("No patent data retrieved — trying old API fallback…")
-        return _fetch_patents_old_api(classes, start_year, end_year, raw_dir)
-
-    df_all = pd.concat(all_frames, ignore_index=True)
-    save_raw(df_all, "oecd_patents_raw", raw_dir)
-
-    id_cols = [c for c in ("country_code", "year") if c in df_all.columns]
-
-    # Total AI patents across all classes
-    df_total = (
-        df_all.groupby(id_cols)["value"].sum().reset_index()
-        .rename(columns={"value": "ai_patents_total"})
-    )
-
-    # Core AI/ML only (G06N)
-    df_g06n = (
-        df_all[df_all["ipc_class"] == "G06N"]
-        .groupby(id_cols)["value"].sum().reset_index()
-        .rename(columns={"value": "ai_patents_g06n_ml"})
-    )
-
-    df_out = df_total.merge(df_g06n, on=id_cols, how="left")
-    logger.info("Patents: %d country-year rows", len(df_out))
-    return df_out
-
-
-def _fetch_patents_old_api(classes, start_year, end_year, raw_dir):
-    """Fallback: fetch patents from the old OECD API."""
-    from .oecd_api import fetch_dataset_old, normalise_old_api
-    all_frames = []
-    for ipc in classes:
-        try:
-            df_raw = fetch_dataset_old(
-                dataset_id="PATS_IPC",
-                filter_expr=f"{ipc}.PCT_APPLICATIONS",
-                start_year=start_year,
-                end_year=end_year,
-            )
-            df = normalise_old_api(df_raw)
-            df["ipc_class"] = ipc
-            all_frames.append(df)
-        except Exception as exc:
-            logger.warning("Old API patent fetch failed for %s: %s", ipc, exc)
-    if not all_frames:
+    logger.info("Fetching OECD AI patents (official OECD AI definition)…")
+    try:
+        df_raw = fetch_dataset_new(
+            dataflow="ai_patents",
+            key=_AI_PATENTS_KEY,
+            start_period=start_year,
+            end_period=end_year,
+        )
+    except Exception as exc:
+        logger.error("AI patent fetch failed: %s", exc)
         return pd.DataFrame()
-    df_all = pd.concat(all_frames, ignore_index=True)
-    save_raw(df_all, "oecd_patents_raw", raw_dir)
-    id_cols = [c for c in ("country_code", "year") if c in df_all.columns]
-    return (
-        df_all.groupby(id_cols)["value"].sum().reset_index()
-        .rename(columns={"value": "ai_patents_total"})
+
+    df = normalise_new_api(df_raw)
+    save_raw(df_raw, "oecd_ai_patents_raw", raw_dir)
+
+    id_cols = [c for c in ("country_code", "year") if c in df.columns]
+    frames = []
+
+    # Triadic patent families: IP5 offices, patent families measure
+    mask_triadic = (df["PATENT_AUTHORITIES"] == "9P50_2") & (df["MEASURE"] == "PF")
+    df_tri = (
+        df[mask_triadic].groupby(id_cols)["value"].sum().reset_index()
+        .rename(columns={"value": "ai_patent_families_triadic"})
     )
+    frames.append(df_tri)
+    logger.info("  ✓ AI triadic patent families: %d country-year rows", len(df_tri))
+
+    # WIPO PCT patent applications
+    mask_wipo = (df["PATENT_AUTHORITIES"] == "9P50_1") & (df["MEASURE"] == "AP")
+    df_wipo = (
+        df[mask_wipo].groupby(id_cols)["value"].sum().reset_index()
+        .rename(columns={"value": "ai_patent_applications_wipo"})
+    )
+    frames.append(df_wipo)
+    logger.info("  ✓ AI WIPO patent applications: %d country-year rows", len(df_wipo))
+
+    df_out = frames[0]
+    for df_next in frames[1:]:
+        df_out = df_out.merge(df_next, on=id_cols, how="outer")
+
+    logger.info("AI Patents: %d country-year rows, %d series",
+                len(df_out), len(df_out.columns) - 2)
+    return df_out
 
 
 # ── 3.  ICT access & usage ────────────────────────────────────────────────────
@@ -313,49 +309,6 @@ def fetch_berd(
     return df_agg
 
 
-# ── 5.  Stanford HAI AI Index (best-effort) ───────────────────────────────────
-
-STANFORD_HAI_URL = (
-    "https://aiindex.stanford.edu/wp-content/uploads/"
-    "2024/04/HAI_2024_AI-Index-Report.xlsx"
-)
-
-
-def download_stanfordhai_index(
-    dest_dir: str | Path = "data/raw",
-    url: str = STANFORD_HAI_URL,
-) -> Optional[pd.DataFrame]:
-    """Attempt to download the Stanford HAI AI Index Excel file."""
-    dest = Path(dest_dir) / "stanford_hai_ai_index.xlsx"
-    logger.info("Attempting Stanford HAI AI Index download…")
-    try:
-        resp = requests.get(url, timeout=60, stream=True,
-                            headers={"User-Agent": "ai-panel-data/1.0"})
-        resp.raise_for_status()
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        with open(dest, "wb") as fh:
-            for chunk in resp.iter_content(chunk_size=8192):
-                fh.write(chunk)
-        logger.info("Downloaded HAI report → %s", dest)
-    except Exception as exc:
-        logger.warning(
-            "Stanford HAI download failed: %s\n"
-            "→ Download manually from https://aiindex.stanford.edu/report/ "
-            "and place at %s", exc, dest
-        )
-        return None
-
-    try:
-        xls = pd.ExcelFile(dest)
-        sheet = next((s for s in xls.sheet_names if "invest" in s.lower() or "4.2" in s), None)
-        if sheet is None:
-            return None
-        return xls.parse(sheet, header=1)
-    except Exception as exc:
-        logger.warning("Could not parse HAI Excel: %s", exc)
-        return None
-
-
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def fetch_all_oecd_ai(
@@ -374,18 +327,14 @@ def fetch_all_oecd_ai(
     if oecd_cfg.get("msti", {}).get("enabled", True):
         inds = oecd_cfg.get("msti", {}).get("indicators") or None
         results["msti"] = fetch_msti(indicators=inds, start_year=start, end_year=end, raw_dir=raw_dir)
-        # Note: ICT patents (P_ICTPCT), total PCT patents (P_PCT), and triadic
-        # patent families (P_TRIAD) are already included in the MSTI dataset above,
-        # so the separate IPC-class patent fetch is skipped.
+
+    if oecd_cfg.get("patents", {}).get("enabled", True):
+        results["ai_patents"] = fetch_ai_patents(start_year=start, end_year=end, raw_dir=raw_dir)
 
     if oecd_cfg.get("ict", {}).get("enabled", True):
         results["ict"] = fetch_ict(start_year=start, end_year=end, raw_dir=raw_dir)
 
     if oecd_cfg.get("berd", {}).get("enabled", True):
         results["berd"] = fetch_berd(start_year=start, end_year=end, raw_dir=raw_dir)
-
-    hai_df = download_stanfordhai_index(dest_dir=raw_dir)
-    if hai_df is not None:
-        results["stanford_hai_investment"] = hai_df
 
     return results

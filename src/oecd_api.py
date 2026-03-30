@@ -44,10 +44,17 @@ def _rate_limit() -> None:
 
 # Known dataflow IDs for the new OECD SDMX 2.1 API
 DATAFLOWS = {
-    "msti":    "OECD.STI.STP,DSD_MSTI@DF_MSTI,1.3",
-    "pats":    "OECD.STI.STP,DSD_PATS@DF_PATS_IPC,1.0",
-    "ict":     "OECD.STI.DEP,DSD_ICT_HH_IND@DF_HH,1.1",
-    "berd":    "OECD.STI.STP,DSD_RDS_BERD@DF_BERD_INDU,1.0",
+    "msti":       "OECD.STI.STP,DSD_MSTI@DF_MSTI,1.3",
+    "pats":       "OECD.STI.STP,DSD_PATS@DF_PATS_IPC,1.0",
+    "ict":        "OECD.STI.DEP,DSD_ICT_HH_IND@DF_HH,1.1",
+    "berd":       "OECD.STI.STP,DSD_RDS_BERD@DF_BERD_INDU,1.0",
+    # OECD AI-specific patent statistics (OECD's own AI patent definition,
+    # based on CPC codes + text mining — see OECD AI Papers No. 30, 2024)
+    # Agency: OECD.STI.PIE  Dimensions (12):
+    #   PATENT_AUTHORITIES . FREQ . MEASURE . UNIT_MEASURE . DATE_TYPE .
+    #   REF_AREA . PARTNER_AREA . AGENT_ROLE . COOPERATION_TYPE . WIPO .
+    #   OECD_TECHNOLOGY_PATENT . TIME_PERIOD
+    "ai_patents": "OECD.STI.PIE,DSD_PATENTS@DF_PATENTS_OECDSPECIFIC,1.0",
 }
 
 
